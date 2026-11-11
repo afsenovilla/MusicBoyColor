@@ -1,0 +1,11 @@
+{
+  "name": "musicboycolor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Extrae la música de ROMs de Game Boy / Game Boy Color a pistas FLAC etiquetadas, en el navegador.",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test test/*.test.mjs"
+  }
+}
