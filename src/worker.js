@@ -3,8 +3,10 @@
 import { openSource, renderTrack, trackPlan } from './rip/pipeline.js';
 import { exportTrack, albumFolder, playlist } from './rip/export.js';
 import { makeZip } from './enc/zip.js';
+import { buildGbs } from './rip/gbsexport.js';
+import { safeName } from './enc/pcm.js';
 
-let session = null;
+let session = null, source = null;
 const post = (m, transfer) => self.postMessage(m, transfer || []);
 const progress = (value, label, params) => post({ type: 'progress', value, label, params });
 
@@ -20,13 +22,21 @@ function describe(t) {
 const handlers = {
   open({ bytes }) {
     session = null;
-    session = openSource(new Uint8Array(bytes), (key, params) => post({ type: 'log', key, params }), (v) => progress(v, 'p.analyze'));
+    source = new Uint8Array(bytes);
+    session = openSource(source, (key, params) => post({ type: 'log', key, params }), (v) => progress(v, 'p.analyze'));
     post({ type: 'opened', meta: session.meta, method: session.method, tracks: session.tracks.map(describe) });
   },
   preview({ index, opts }) {
     const pcm = renderTrack(session, session.tracks[index], { ...opts, sampleRate: 44100, maxSec: Math.min(opts.maxSec, 120) });
     const l = pcm.l.slice(), r = pcm.r.slice();
     post({ type: 'preview', index, l, r, sampleRate: 44100 }, [l.buffer, r.buffer]);
+  },
+  gbs({ indices, album }) {
+    progress(0.5, 'p.gbs');
+    const r = buildGbs({ ...session, tracks: indices.map((i) => session.tracks[i]) }, source,
+      { title: album.album, author: album.artist, copyright: album.year });
+    post({ type: 'exported', name: `${safeName(album.album)}.gbs`, blob: new Blob([r.data], { type: 'application/octet-stream' }),
+      gbs: { songs: r.checked, verified: r.matched, dropped: r.dropped } });
   },
   export({ tracks, album, opts, single }) {
     const files = [], entries = [];

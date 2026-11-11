@@ -22,6 +22,10 @@ npm test         # node --test, needs Node 20+
   - **MIDI** — an interpretation of that log as notes (Pulse 1, Pulse 2, Wave as instrument tracks,
     Noise as drums), with pitch bends, panning and `loopStart` / `loopEnd` markers. Pitches, timing
     and volumes survive; Game Boy timbres do not.
+- **GBS export** for ROMs: the game's own sound driver packaged in the standard `.gbs` format,
+  with a small generated start-up stub (restores the driver's memory, maps song numbers, relocates
+  trampolines that live below `0x400`). Every song is checked against the ROM in the built-in
+  emulator before the file is offered. Not every game can be converted; the app says why.
 - One file per song, `NN - Title.flac` inside `Album (Year)/`, plus an `.m3u8` playlist.
 - Tags: title, artist, album, track number/total, date, genre, and `LOOPSTART` / `LOOPLENGTH`
   (in samples) for looping songs.
@@ -56,6 +60,8 @@ knowing drivers, MusicBoyColor watches the game run (`src/rip/scan.js`):
   song selector it falls back to capturing the music the game plays at start-up, and says so.
 - Engines that select songs by data pointer instead of by number (common in homebrew: GBT Player,
   hUGEDriver) or that need two arguments (song + bank) are not enumerated; use a `.gbs` for those.
+- GBS export has been checked with one external player (libgme, through ffmpeg) on one game. It
+  cannot convert drivers that keep sound data below `0x400` or need MBC5's high bank bit.
 - The VGM writer follows the 1.71 spec and is structurally tested, but has not been checked in an
   external VGM player yet.
 - Ids past the end of a game's song table can produce garbage "tracks"; preview and untick them.
