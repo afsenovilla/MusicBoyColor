@@ -6,6 +6,7 @@ import { CLOCK_RATE } from '../core/apu.js';
 
 // How many driver ticks of register data describe the whole song once.
 export function dataTicks(player, info, loops = 1) {
+  if (info.unresolved) return Math.round(150 * player.tps);
   return info.looping ? info.loopStart + info.loopLen * loops : info.endTick + Math.ceil(player.tps);
 }
 

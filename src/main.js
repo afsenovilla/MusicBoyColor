@@ -19,6 +19,7 @@ function options() {
 function duration(t) {
   const o = options();
   const data = o.format === 'mid' || o.format === 'vgm';
+  if (t.open) return Math.min(150, o.maxSec) - t.skipSec;
   const raw = t.looping ? t.introSec + t.loopSec * (o.format === 'vgm' ? 1 : o.loops) + (data ? 0 : o.fadeSec) : t.endSec + 1;
   return Math.max(0, Math.min(raw, o.maxSec) - t.skipSec);
 }
