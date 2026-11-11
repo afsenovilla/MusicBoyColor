@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MusicBoyColor · Rip the music from your Game Boy ROMs</title>
+  <meta name="description" content="Rip the soundtrack of a Game Boy or Game Boy Color ROM to lossless FLAC, split into tagged tracks. Everything runs in your browser.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='5' y='2' width='22' height='28' rx='3' fill='%23c8c2b4'/%3E%3Crect x='8' y='5' width='16' height='12' rx='1' fill='%235a6b2f'/%3E%3Ccircle cx='21' cy='23' r='2.2' fill='%23a3284f'/%3E%3Crect x='9' y='21' width='6' height='2' fill='%23333'/%3E%3Crect x='11' y='19' width='2' height='6' fill='%23333'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <h1>MusicBoy<span>Color</span></h1>
+      <select id="lang" class="lang" aria-label="Language"></select>
+    </div>
+    <p class="tagline" data-i18n="tagline"></p>
+  </header>
+
+  <main>
+    <section id="drop" class="drop" tabindex="0" role="button" aria-label="Choose a ROM">
+      <input type="file" id="file" accept=".gb,.gbc,.sgb,.cgb,.gbs,.bin" hidden>
+      <div class="drop-screen">
+        <p class="drop-title" data-i18n="drop.title"></p>
+        <p class="drop-sub"><code>.gb</code> <code>.gbc</code> <code>.gbs</code> <span data-i18n="drop.sub"></span></p>
+      </div>
+      <p class="privacy" data-i18n="privacy"></p>
+    </section>
+
+    <section id="status" class="card" hidden>
+      <div class="status-head">
+        <strong id="status-label"></strong>
+        <span id="status-pct" class="num"></span>
+      </div>
+      <div class="bar"><div id="bar-fill"></div></div>
+      <ol id="log" class="log"></ol>
+    </section>
+
+    <section id="error" class="card error" hidden></section>
+
+    <section id="result" hidden>
+      <div class="card album">
+        <div class="cart" aria-hidden="true"><div class="cart-label" id="cart-label"></div></div>
+        <div class="album-fields">
+          <label class="field wide"><span data-i18n="f.album"></span><input id="f-album" type="text" autocomplete="off"></label>
+          <label class="field"><span data-i18n="f.artist"></span><input id="f-artist" type="text" autocomplete="off"></label>
+          <label class="field small"><span data-i18n="f.year"></span><input id="f-year" type="text" inputmode="numeric" maxlength="4" autocomplete="off"></label>
+          <label class="field small"><span data-i18n="f.genre"></span><input id="f-genre" type="text" autocomplete="off"></label>
+          <ul id="chips" class="chips"></ul>
+        </div>
+      </div>
+
+      <div class="card options">
+        <label class="field"><span data-i18n="o.format"></span>
+          <select id="o-format"><option value="flac" data-i18n="o.flac"></option><option value="wav">WAV</option><option value="mid" data-i18n="o.mid"></option><option value="vgm" data-i18n="o.vgm"></option></select></label>
+        <label class="field"><span data-i18n="o.rate"></span>
+          <select id="o-rate"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="96000">96 kHz</option></select></label>
+        <label class="field"><span data-i18n="o.bps"></span>
+          <select id="o-bps"><option value="16" data-i18n="o.bits" data-n="16"></option><option value="24" selected data-i18n="o.bits" data-n="24"></option></select></label>
+        <label class="field"><span data-i18n="o.loops"></span>
+          <select id="o-loops"><option value="1" data-i18n="o.loop1"></option><option value="2" selected data-i18n="o.loopN" data-n="2"></option><option value="3" data-i18n="o.loopN" data-n="3"></option></select></label>
+        <label class="field"><span data-i18n="o.fade"></span>
+          <select id="o-fade"><option value="0" data-i18n="o.nofade"></option><option value="5">5 s</option><option value="8" selected>8 s</option><option value="12">12 s</option></select></label>
+        <label class="check"><input id="o-norm" type="checkbox"> <span data-i18n="o.norm"></span></label>
+        <p class="hint format-hint" id="format-hint"></p>
+      </div>
+
+      <div class="card tracks">
+        <div class="tracks-head">
+          <label class="check"><input id="all" type="checkbox" checked> <span id="count"></span></label>
+          <button id="export" class="primary" type="button" data-i18n="btn.zip"></button>
+        </div>
+        <table>
+          <thead><tr><th></th><th class="num">#</th><th data-i18n="th.title"></th><th data-i18n="th.kind"></th><th class="num" data-i18n="th.dur"></th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <p class="hint" id="hint"></p>
+      </div>
+
+      <button id="another" class="ghost" type="button" data-i18n="btn.another"></button>
+    </section>
+  </main>
+
+  <footer>
+    <p data-i18n="footer"></p>
+  </footer>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
