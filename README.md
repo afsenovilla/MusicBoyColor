@@ -5,6 +5,8 @@ A web app that rips the soundtrack out of a Game Boy / Game Boy Color ROM (`.gb`
 
 Everything runs in the browser: the file is never uploaded. No build step, no dependencies.
 
+**Live:** https://afsenovilla.github.io/MusicBoyColor/
+
 ```sh
 npm start        # serves the folder at http://localhost:8080 (any static server works)
 npm test         # node --test, needs Node 20+
@@ -72,5 +74,10 @@ src/enc/                  FLAC, WAV, MIDI, VGM, ZIP, MD5 writers
 src/meta/                 cartridge header parsing
 test/                     synthetic ROM builder and tests
 ```
+
+## Publishing
+
+The site is plain static files served from the repository root, so GitHub Pages needs no build:
+Settings → Pages → *Deploy from a branch* → `main`, `/ (root)`.
 
 MusicBoyColor neither includes nor distributes ROMs. Use it with dumps of games you own.
