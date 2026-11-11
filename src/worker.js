@@ -41,7 +41,7 @@ const handlers = {
     progress(1, 'p.pack');
     if (single) {
       const f = files[0];
-      post({ type: 'exported', name: f.name.split('/').pop(), blob: new Blob([f.data], { type: opts.format === 'wav' ? 'audio/wav' : 'audio/flac' }) });
+      post({ type: 'exported', name: f.name.split('/').pop(), blob: new Blob([f.data], { type: { wav: 'audio/wav', flac: 'audio/flac', mid: 'audio/midi', vgm: 'application/octet-stream' }[opts.format] }) });
       return;
     }
     files.push({ name: `${folder}/${folder}.m3u8`, data: new TextEncoder().encode(playlist(entries)) });

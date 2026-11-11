@@ -85,3 +85,67 @@ test('helpers: md5, crc32, zip, header', () => {
   assert.equal(h.publisher, 'Nintendo');
   assert.ok(playlist([{ name: '01 - a.flac', title: 'a', seconds: 3.4 }]).includes('#EXTINF:3,a\n01 - a.flac'));
 });
+
+function parseMidi(data) {
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  assert.equal(String.fromCharCode(...data.subarray(0, 4)), 'MThd');
+  const ntracks = dv.getUint16(10), tracks = [];
+  let o = 14;
+  for (let k = 0; k < ntracks; k++) {
+    assert.equal(String.fromCharCode(...data.subarray(o, o + 4)), 'MTrk');
+    const end = o + 8 + dv.getUint32(o + 4);
+    o += 8;
+    const ev = [];
+    let tick = 0;
+    while (o < end) {
+      let d = 0, b;
+      do { b = data[o++]; d = (d << 7) | (b & 0x7f); } while (b & 0x80);
+      tick += d;
+      const st = data[o++];
+      if (st === 0xff) { const type = data[o++], len = data[o++]; ev.push({ tick, meta: type, text: new TextDecoder().decode(data.subarray(o, o + len)) }); o += len; }
+      else { const n = (st & 0xf0) === 0xc0 ? 1 : 2; ev.push({ tick, st, a: data[o], b: n === 2 ? data[o + 1] : 0 }); o += n; }
+    }
+    assert.equal(o, end);
+    tracks.push(ev);
+  }
+  return tracks;
+}
+
+test('MIDI export: right notes, timing and loop markers', () => {
+  const s = openSource(makeRom('call'));
+  const f = exportTrack(s, { index: 1, title: 'Scale', number: 2 }, { album: 'T', artist: '', year: '', genre: '', total: 5 }, { ...OPTS, format: 'mid', loops: 2 });
+  assert.equal(f.name, '02 - Scale.mid');
+  const tracks = parseMidi(f.data);
+  assert.equal(tracks.length, 2); // conductor + pulse 1
+  const ons = tracks[1].filter((e) => (e.st & 0xf0) === 0x90);
+  // C major scale C4..C5, played twice (2 loops), 15 frames per note.
+  assert.deepEqual(ons.map((e) => e.a), [60, 62, 64, 65, 67, 69, 71, 72, 60, 62, 64, 65, 67, 69, 71, 72]);
+  const step = ons[1].tick - ons[0].tick;
+  assert.ok(Math.abs(step - 15 / 59.7275 * 960) <= 1, `step ${step}`);
+  assert.equal(tracks[1].filter((e) => (e.st & 0xf0) === 0x80).length, ons.length);
+  assert.deepEqual(tracks[0].filter((e) => e.meta === 6).map((e) => e.text), ['loopStart', 'loopEnd']);
+});
+
+test('VGM export: header, loop point and register log', () => {
+  const s = openSource(makeRom('call'));
+  const f = exportTrack(s, { index: 1, title: 'Scale', number: 2 }, { album: 'T', artist: 'A', year: '1998', genre: '', total: 5 }, { ...OPTS, format: 'vgm' });
+  const d = f.data, dv = new DataView(d.buffer, d.byteOffset, d.byteLength);
+  assert.equal(String.fromCharCode(...d.subarray(0, 4)), 'Vgm ');
+  assert.equal(dv.getUint32(4, true), d.length - 4);
+  assert.equal(dv.getUint32(0x80, true), 4194304);
+  const total = dv.getUint32(0x18, true);
+  assert.ok(Math.abs(total / 44100 - 120 / 59.7275) < 0.01);
+  assert.equal(dv.getUint32(0x20, true), total); // whole song is the loop
+  // Walk the command stream: it must end exactly at the GD3 tag.
+  let o = 0x100, samples = 0, writes = 0, triggers = 0;
+  for (;;) {
+    const c = d[o];
+    if (c === 0x66) { o++; break; }
+    if (c === 0x61) { samples += d[o + 1] | (d[o + 2] << 8); o += 3; }
+    else { assert.equal(c, 0xb3); writes++; if (d[o + 1] === 4 && (d[o + 2] & 0x80)) triggers++; o += 3; }
+  }
+  assert.equal(samples, total);
+  assert.equal(triggers, 8);
+  assert.equal(o, 0x14 + dv.getUint32(0x14, true));
+  assert.equal(String.fromCharCode(...d.subarray(o, o + 4)), 'Gd3 ');
+});

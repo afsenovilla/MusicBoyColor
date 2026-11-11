@@ -18,7 +18,8 @@ function options() {
 
 function duration(t) {
   const o = options();
-  const raw = t.looping ? t.introSec + t.loopSec * o.loops + o.fadeSec : t.endSec + 1;
+  const data = o.format === 'mid' || o.format === 'vgm';
+  const raw = t.looping ? t.introSec + t.loopSec * (o.format === 'vgm' ? 1 : o.loops) + (data ? 0 : o.fadeSec) : t.endSec + 1;
   return Math.max(0, Math.min(raw, o.maxSec) - t.skipSec);
 }
 
@@ -30,7 +31,16 @@ function clock(sec) {
 function setBusy(busy) {
   state.busy = busy;
   for (const b of document.querySelectorAll('#result button, #result select')) b.disabled = busy;
+  if (!busy) syncOptions();
   if (!busy) refreshSummary();
+}
+
+// Audio-only options make no sense for the data formats.
+function syncOptions() {
+  const f = $('o-format').value, data = f === 'mid' || f === 'vgm';
+  for (const id of ['o-rate', 'o-bps', 'o-fade', 'o-norm']) $(id).disabled = data || state.busy;
+  $('o-loops').disabled = f === 'vgm' || state.busy;
+  $('format-hint').textContent = data ? t(`hint.${f}`) : '';
 }
 
 function show(id, on) { $(id).hidden = !on; }
@@ -151,6 +161,7 @@ function applyLang() {
   for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n, el.dataset);
   $('drop').setAttribute('aria-label', t('drop.aria'));
   $('lang').setAttribute('aria-label', t('lang'));
+  syncOptions();
   if ($('f-genre').dataset.auto) $('f-genre').value = t('genre');
   state.tracks.forEach((tk, i) => { if (!tk.custom) tk.title = trackName(i); });
   renderLog();
@@ -245,6 +256,7 @@ $('all').addEventListener('change', (e) => { state.tracks.forEach((tk, i) => { t
 $('export').addEventListener('click', () => exportTracks(selected(), false));
 $('another').addEventListener('click', () => { stopAudio(); show('result', false); show('error', false); show('drop', true); });
 for (const id of ['o-loops', 'o-fade']) $(id).addEventListener('change', refreshSummary);
+$('o-format').addEventListener('change', () => { syncOptions(); refreshSummary(); });
 $('f-genre').addEventListener('input', () => { delete $('f-genre').dataset.auto; });
 for (const [code, name] of Object.entries(LANGS)) $('lang').append(Object.assign(document.createElement('option'), { value: code, textContent: name }));
 $('lang').value = getLang();

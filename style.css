@@ -114,3 +114,5 @@ footer { padding-top: 12px; padding-bottom: 32px; color: var(--muted); font-size
   td:first-child, th:first-child { padding-left: 12px; width: 32px; }
   .tracks-head { padding: 12px; }
 }
+
+.format-hint { grid-column: 1 / -1; padding: 0; border: 0; }

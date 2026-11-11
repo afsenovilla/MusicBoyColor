@@ -53,7 +53,7 @@
 
       <div class="card options">
         <label class="field"><span data-i18n="o.format"></span>
-          <select id="o-format"><option value="flac" data-i18n="o.flac"></option><option value="wav">WAV</option></select></label>
+          <select id="o-format"><option value="flac" data-i18n="o.flac"></option><option value="wav">WAV</option><option value="mid" data-i18n="o.mid"></option><option value="vgm" data-i18n="o.vgm"></option></select></label>
         <label class="field"><span data-i18n="o.rate"></span>
           <select id="o-rate"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="96000">96 kHz</option></select></label>
         <label class="field"><span data-i18n="o.bps"></span>
@@ -63,6 +63,7 @@
         <label class="field"><span data-i18n="o.fade"></span>
           <select id="o-fade"><option value="0" data-i18n="o.nofade"></option><option value="5">5 s</option><option value="8" selected>8 s</option><option value="12">12 s</option></select></label>
         <label class="check"><input id="o-norm" type="checkbox"> <span data-i18n="o.norm"></span></label>
+        <p class="hint format-hint" id="format-hint"></p>
       </div>
 
       <div class="card tracks">

@@ -23,12 +23,15 @@ export class Player {
     this.tickDots = cfg.tickDots || FRAME_DOTS;
     this.tps = CLOCK_RATE / this.tickDots;
     this.due = 0;
+    this.hook = null;      // optional (reg, value) observer installed on start()
+    this.onLoaded = null;  // optional callback right after the snapshot is restored
   }
 
   start(id, skip = false) {
     const gb = this.gb, c = this.cfg;
     gb.load(c.snap);
-    gb.tr = null; gb.mt = null; gb.onApu = null;
+    gb.tr = null; gb.mt = null; gb.onApu = this.hook || null;
+    if (this.onLoaded) this.onLoaded(gb);
     if (c.kind === 'gbs') {
       gb.a = id;
       gb.noInt = true;
