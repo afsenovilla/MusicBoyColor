@@ -143,7 +143,13 @@ export function analyze(player, id, o = {}) {
           const m = n - verified - cand;
           res.ok = true;
           if (cand <= 8) { res.endTick = Math.min(m + sec * 2, lastAud + 1); }
-          else { res.looping = true; res.loopStart = Math.max(0, m); res.loopLen = cand; }
+          else {
+            // The state hash only becomes comparable once every driver byte has
+            // been touched, so walk back to where the output really starts repeating.
+            let st = Math.max(0, m);
+            while (st > 0 && wh[st - 1] === wh[st - 1 + cand]) st--;
+            res.looping = true; res.loopStart = st; res.loopLen = cand;
+          }
           return finish();
         }
       } else { cand = 0; verified = 0; }

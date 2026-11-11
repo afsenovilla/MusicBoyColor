@@ -74,16 +74,16 @@ export function renderTrack(session, track, opts, onProgress) {
   const { plan } = trackPlan(session, track, opts);
   const pcm = render(session.player, track.id, plan, opts.sampleRate, onProgress);
   if (!pcm) throw new Error('err.render');
-  if (opts.normalize) {
-    let peak = 0;
-    for (let i = 0; i < pcm.l.length; i++) {
-      const a = Math.abs(pcm.l[i]), b = Math.abs(pcm.r[i]);
-      if (a > peak) peak = a; if (b > peak) peak = b;
-    }
-    if (peak > 1e-4) {
-      const g = 0.944 / peak; // -0.5 dBFS
-      for (let i = 0; i < pcm.l.length; i++) { pcm.l[i] *= g; pcm.r[i] *= g; }
-    }
+  let peak = 0;
+  for (let i = 0; i < pcm.l.length; i++) {
+    const a = Math.abs(pcm.l[i]), b = Math.abs(pcm.r[i]);
+    if (a > peak) peak = a; if (b > peak) peak = b;
+  }
+  // Never clip: a track that would exceed full scale is turned down as a whole.
+  const target = 0.944; // -0.5 dBFS
+  if (peak > 1e-4 && (opts.normalize || peak > target)) {
+    const g = target / peak;
+    for (let i = 0; i < pcm.l.length; i++) { pcm.l[i] *= g; pcm.r[i] *= g; }
   }
   return pcm;
 }

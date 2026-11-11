@@ -14,7 +14,9 @@ const READ_MASK = [
   0xff, 0x00, 0x00, 0xbf, 0x00, 0x00, 0x70, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 ];
 const MAX_LEN = [64, 64, 256, 64];
-const OUT_SCALE = 1 / 32; // 4 channels x 8 master-volume steps -> full scale 1.0
+// 4 channels x 8 master-volume steps would be full scale at 1/32. The output
+// capacitor makes transients overshoot (the console pops too), so leave headroom.
+const OUT_SCALE = 0.6 / 32;
 
 export class Apu {
   constructor(cgb) {
