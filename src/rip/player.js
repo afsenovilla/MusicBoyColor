@@ -29,6 +29,8 @@ export class Player {
 
   start(id, skip = false) {
     const gb = this.gb, c = this.cfg;
+    const want = id;
+    if (c.pre !== undefined && !skip) id = c.pre;
     gb.load(c.snap);
     gb.tr = null; gb.mt = null; gb.onApu = this.hook || null;
     if (this.onLoaded) this.onLoaded(gb);
@@ -58,6 +60,20 @@ export class Player {
       gb.noInt = true; gb.halted = false;
     }
     this.due = gb.clock;
+    if (c.pre !== undefined && !skip && (c.kind === 'call' || c.kind === 'poke')) {
+      // Two-step start: the snapshot has a song playing, and ids that are
+      // jingles or effects would play on top of it. `pre` is an id known to
+      // silence the driver; it was applied above instead of `id`. Let it take
+      // effect, then select the real song from silence.
+      id = want;
+      for (let k = 0; k < 8; k++) this.tick();
+      if (c.kind === 'poke') gb.ram[c.ramId] = id & 0xff;
+      else {
+        if (c.ramId !== undefined) gb.ram[c.ramId] = id & 0xff; else gb[c.reg] = id & 0xff;
+        if (c.snap.pc >= 0x4000) gb.romOff = c.snap.romOff;
+        if (!gb.call(c.snap.pc, FRAME_DOTS * 4)) return false;
+      }
+    }
     return !gb.crashed;
   }
 
@@ -81,7 +97,7 @@ const FREQ_LO = new Set([0xff13, 0xff18, 0xff1d, 0xff22]);
 // fractional tempo accumulators that make a loop last 1234.5 ticks, so the
 // same notes come back a tick early or late. The event *sequence* still
 // repeats; its period in ticks is taken as the median distance.
-function streamLoop(T, H, total) {
+export function streamLoop(T, H, total) {
   const N = H.length;
   for (let q = 2; q <= N / 3; q++) {
     let i = N - 1;
@@ -92,10 +108,15 @@ function streamLoop(T, H, total) {
     if (T[N - 1] - T[first - q] < total * 0.45) continue;
     const gaps = [];
     for (let k = first; k < N; k++) gaps.push(T[k] - T[k - q]);
-    gaps.sort((x, y) => x - y);
-    const len = gaps[gaps.length >> 1];
-    if (len < 30 || gaps[gaps.length - 1] - gaps[0] > 6) continue;
-    return { len, start: T[first - q] };
+    const sorted = gaps.slice().sort((x, y) => x - y);
+    const len = sorted[sorted.length >> 1];
+    // The first pass may include an intro of a different length: judge the
+    // spread without the extremes and start the loop where the gap settles.
+    const lo = sorted[Math.floor(sorted.length * 0.05)], hi = sorted[Math.ceil(sorted.length * 0.95) - 1];
+    if (len < 30 || hi - lo > 6) continue;
+    let k0 = 0;
+    while (k0 < gaps.length && Math.abs(gaps[k0] - len) > 3) k0++;
+    return { len, start: T[first + k0 - q] };
   }
   return null;
 }
@@ -104,20 +125,21 @@ function streamLoop(T, H, total) {
 // accumulators drift against each other by a tick), then the song loop is the
 // longest channel loop, provided the others fit into it a whole number of times.
 function eventLoop(streams, total, res) {
+  let active = 0;
   const loops = [];
   for (const st of streams) {
     if (st.t.length < 8 || st.t[st.t.length - 1] < total * 0.5) continue; // silent or intro-only channel
+    active++;
     const l = streamLoop(st.t, st.h, total);
-    if (!l) return false;
-    loops.push(l);
+    if (l) loops.push(l);
   }
-  if (!loops.length) return false;
+  // A channel can be legitimately aperiodic (free-running vibrato or duty
+  // modulation), so a loop on most of the channels is enough.
+  if (!loops.length || loops.length * 2 < active) return false;
   const len = Math.max(...loops.map((l) => l.len));
-  for (const l of loops) {
-    const k = Math.round(len / l.len);
-    if (Math.abs(len - k * l.len) > 4 + 2 * k) return false;
-  }
-  res.looping = true; res.loopLen = len; res.loopStart = Math.max(...loops.map((l) => l.start));
+  const fit = loops.filter((l) => { const k = Math.round(len / l.len); return Math.abs(len - k * l.len) <= 4 + 2 * k; });
+  if (fit.length * 2 < active) return false;
+  res.looping = true; res.loopLen = len; res.loopStart = Math.max(...fit.map((l) => l.start));
   return true;
 }
 
@@ -128,12 +150,11 @@ function eventLoop(streams, total, res) {
 export function analyze(player, id, o = {}) {
   const gb = player.gb, tps = player.tps;
   const res = { ok: false, id, notes: 0, sustained: false, noteFp: 0, fp: 0, looping: false,
-    loopStart: 0, loopLen: 0, loopSig: '', endTick: 0, unresolved: false, firstAudible: -1, dubious: false, reason: '' };
+    loopStart: 0, loopLen: 0, loopSig: '', endTick: 0, unresolved: false, lastAudible: -1, firstAudible: -1, dubious: false, reason: '' };
   if (!player.start(id, o.skip)) { res.reason = 'crash'; return res; }
   const maxTicks = Math.round((o.maxSec || 4) * tps);
   const sec = Math.round(tps);
   const wild0 = gb.wildWrites;
-  const mus = new Int32Array(5);
   const streams = [0, 1, 2, 3, 4].map(() => ({ t: [], h: [] }));
   let tickHash = 0, fp = 0x811c9dc5, noteFp = 0x811c9dc5, notes = 0, lateNotes = 0, n = 0;
   gb.onApu = (a, v) => {
@@ -142,8 +163,11 @@ export function analyze(player, id, o = {}) {
     // values every tick): these form the musical event stream.
     const r = a - 0xff10;
     if (r === 0x16 ? (v >> 7) !== gb.apu.power : (TRIGGERS.has(a) && (v & 0x80)) || gb.apu.regs[r] !== v) {
-      const c = r < 5 ? 0 : r < 10 ? 1 : r < 15 ? 2 : r < 20 ? 3 : 4;
-      mus[c] = (Math.imul(mus[c] ^ ((a << 8) | v), 0x01000193) + 0x9e3779b9) | 0;
+      // One event per write, per channel: when two updates of a channel land
+      // on the same tick in one pass of the loop and on neighbouring ticks in
+      // the next, the sequence of writes is still identical.
+      const st = streams[r < 5 ? 0 : r < 10 ? 1 : r < 15 ? 2 : r < 20 ? 3 : 4];
+      st.t.push(n); st.h.push((a << 8) | v);
     }
     if (n < sec * 10) fp = Math.imul(fp ^ ((n << 16) | ((a & 0xff) << 8) | v), 0x01000193);
     if ((TRIGGERS.has(a) && (v & 0x80)) || (FREQ_LO.has(a) && gb.apu.regs[a - 0xff10] !== v)) {
@@ -158,6 +182,8 @@ export function analyze(player, id, o = {}) {
   let lastAud = -1, cand = 0, verified = 0;
   const finish = () => {
     gb.onApu = null; gb.mt = null;
+    if (o.debug) res.streams = streams;
+    res.lastAudible = lastAud;
     res.wh = wh.slice(0, sec * 30);
     res.notes = notes; res.fp = fp >>> 0; res.noteFp = notes >= 6 ? noteFp >>> 0 : 0;
     res.sustained = notes >= 6 && lateNotes >= 2;
@@ -175,13 +201,12 @@ export function analyze(player, id, o = {}) {
     return res;
   };
   for (; n < maxTicks; n++) {
-    tickHash = 0; mus.fill(0);
+    tickHash = 0;
     if (!player.tick()) { res.reason = 'crash'; return finish(); }
     gb.endAudioFrame();
     if (gb.apu.audible()) { lastAud = n; if (res.firstAudible < 0) res.firstAudible = n; }
     if (!o.detect) continue;
     wh.push(tickHash);
-    for (let c = 0; c < 5; c++) if (mus[c]) { streams[c].t.push(n); streams[c].h.push(mus[c]); }
     if (n >= sec * 40 && n % (sec * 20) === 0 && eventLoop(streams, n + 1, res)) { res.ok = true; return finish(); }
     if (n === sec * 5 && notes < 3) { res.reason = 'silent'; return finish(); }
     if (n > sec && n - lastAud > sec * 2) {
