@@ -81,6 +81,7 @@ function refreshSummary() {
   $('all').checked = sel.length === state.tracks.length;
   $('all').indeterminate = sel.length > 0 && sel.length < state.tracks.length;
   $('export').disabled = state.busy || sel.length === 0;
+  $('gbs').disabled = state.busy || sel.length === 0;
   let n = 0;
   state.tracks.forEach((tk, i) => {
     const row = $('rows').children[i];
@@ -145,6 +146,8 @@ function onOpened({ meta, method, tracks }) {
   $('f-year').value = meta.year || '';
   $('f-genre').value = t('genre'); $('f-genre').dataset.auto = '1';
   $('cart-label').textContent = meta.rawTitle || fileBase();
+  state.gbs = null; renderGbsNote();
+  $('gbs').hidden = !(meta.type === 'rom' && method !== 'full');
   renderMeta();
   buildRows();
   show('status', false); show('result', true);
@@ -168,6 +171,7 @@ function applyLang() {
   renderLog();
   if (state.progress) setProgress(state.progress.value, state.progress.label, state.progress.params);
   if (state.lastError) $('error').textContent = state.lastError();
+  renderGbsNote();
   if (state.meta) { renderMeta(); const playing = state.playing; buildRows(); if (playing >= 0) { const b = $('rows').children[playing].querySelector('.play'); b.textContent = '■'; b.classList.add('on'); } }
 }
 
@@ -223,7 +227,24 @@ function exportTracks(list, single) {
   worker.postMessage({ type: 'export', tracks, album, opts: options(), single });
 }
 
-function onExported({ name, blob }) {
+function exportGbs() {
+  const sel = selected();
+  if (state.busy || !sel.length) return;
+  stopAudio();
+  setBusy(true);
+  show('status', true); show('error', false); state.logs = []; renderLog();
+  setProgress(0, 'p.gbs');
+  worker.postMessage({ type: 'gbs', indices: sel.map((tk) => tk.index),
+    album: { album: $('f-album').value.trim() || 'Game Boy', artist: $('f-artist').value.trim(), year: $('f-year').value.trim() } });
+}
+
+function renderGbsNote() {
+  const g = state.gbs;
+  $('gbs-note').textContent = g ? t('gbs.ok', g) + (g.dropped ? t('gbs.dropped', g) : '') : '';
+}
+
+function onExported({ name, blob, gbs }) {
+  if (gbs) { state.gbs = gbs; renderGbsNote(); }
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
@@ -255,6 +276,7 @@ window.addEventListener('dragleave', () => drop.classList.remove('over'));
 window.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); openFile(e.dataTransfer.files[0]); });
 $('all').addEventListener('change', (e) => { state.tracks.forEach((tk, i) => { tk.selected = e.target.checked; $('rows').children[i].querySelector('input').checked = tk.selected; }); refreshSummary(); });
 $('export').addEventListener('click', () => exportTracks(selected(), false));
+$('gbs').addEventListener('click', exportGbs);
 $('another').addEventListener('click', () => { stopAudio(); show('result', false); show('error', false); show('drop', true); });
 for (const id of ['o-loops', 'o-fade']) $(id).addEventListener('change', refreshSummary);
 $('o-format').addEventListener('change', () => { syncOptions(); refreshSummary(); });

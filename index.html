@@ -69,12 +69,13 @@
       <div class="card tracks">
         <div class="tracks-head">
           <label class="check"><input id="all" type="checkbox" checked> <span id="count"></span></label>
-          <button id="export" class="primary" type="button" data-i18n="btn.zip"></button>
+          <span class="actions"><button id="gbs" type="button" data-i18n="btn.gbs" hidden></button> <button id="export" class="primary" type="button" data-i18n="btn.zip"></button></span>
         </div>
         <table>
           <thead><tr><th></th><th class="num">#</th><th data-i18n="th.title"></th><th data-i18n="th.kind"></th><th class="num" data-i18n="th.dur"></th><th></th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
+        <p class="hint" id="gbs-note"></p>
         <p class="hint" id="hint"></p>
       </div>
 

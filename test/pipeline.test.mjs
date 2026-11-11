@@ -149,3 +149,21 @@ test('VGM export: header, loop point and register log', () => {
   assert.equal(o, 0x14 + dv.getUint32(0x14, true));
   assert.equal(String.fromCharCode(...d.subarray(o, o + 4)), 'Gd3 ');
 });
+
+test('GBS export: relocates low code, restores RAM and matches the ROM', async () => {
+  const { buildGbs } = await import('../src/rip/gbsexport.js');
+  for (const variant of ['call', 'poke']) {
+    const rom = makeRom(variant, 'TESTSONGS', true);
+    const s = openSource(rom);
+    const r = buildGbs(s, rom, { title: 'Test', author: 'Me' });
+    assert.equal(r.checked, SONGS.length);
+    assert.equal(r.matched, SONGS.length);
+    assert.ok(r.relocated > 0);
+    const g = openSource(r.data);
+    assert.equal(g.meta.title, 'Test');
+    assert.deepEqual(g.tracks.map((t) => t.info.loopLen), s.tracks.map((t) => t.info.loopLen));
+  }
+  // Sound data below 0x400 cannot live in a GBS.
+  const low = makeRom('call');
+  assert.throws(() => buildGbs(openSource(low), low), /gbs\.lowData/);
+});

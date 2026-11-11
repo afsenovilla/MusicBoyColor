@@ -32,7 +32,8 @@ export const SONGS = [
   [...seq([131, 165, 196, 247, 262, 247, 196, 165, 131, 110, 98, 110, 131, 147, 165, 196, 220, 196], 10), 0xff],
 ];
 
-export function makeRom(variant = 'call', title = 'TESTSONGS') {
+// highData: put the song table and data at 0x500 (code stays below 0x400).
+export function makeRom(variant = 'call', title = 'TESTSONGS', highData = false) {
   const a = new Asm();
   a.org(0x40); a.abs(0xc3, 'VBlank');
   a.org(0x100); a.db(0x00); a.abs(0xc3, 'Start');
@@ -68,6 +69,7 @@ export function makeRom(variant = 'call', title = 'TESTSONGS') {
   a.label('Note');
   a.db(0xe0, 0x13, 0x47, 0x3e, 0xf0, 0xe0, 0x12, 0x2a, 0xf6, 0x80, 0xe0, 0x14, 0x2a); a.abs(0xea, DELAY);
   a.db(0x7d); a.abs(0xea, PTR); a.db(0x7c); a.abs(0xea, PTR + 1); a.db(0xc9);
+  if (highData) a.org(0x500);
   a.label('Table');
   const tablePc = a.pc;
   a.pc += SONGS.length * 2;
