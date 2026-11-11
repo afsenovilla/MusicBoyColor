@@ -12,7 +12,7 @@ function describe(t) {
   const tps = session.player.tps;
   const { plan } = trackPlan(session, t, { loops: 1, fadeSec: 0, maxSec: 1e9 });
   return {
-    id: t.id, kind: t.kind, dubious: t.dubious, looping: t.info.looping,
+    id: t.id, kind: t.kind, dubious: t.dubious, looping: t.info.looping, open: !!t.info.unresolved,
     introSec: t.introSec, loopSec: t.loopSec, endSec: t.info.endTick / tps, skipSec: plan.skipTicks / tps,
   };
 }

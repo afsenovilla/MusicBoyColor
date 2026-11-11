@@ -76,6 +76,51 @@ export class Player {
 const TRIGGERS = new Set([0xff14, 0xff19, 0xff1e, 0xff23]);
 const FREQ_LO = new Set([0xff13, 0xff18, 0xff1d, 0xff22]);
 
+// Loop detection on the stream of musical events rather than on driver state.
+// Needed when the state never repeats exactly: free-running counters, or
+// fractional tempo accumulators that make a loop last 1234.5 ticks, so the
+// same notes come back a tick early or late. The event *sequence* still
+// repeats; its period in ticks is taken as the median distance.
+function streamLoop(T, H, total) {
+  const N = H.length;
+  for (let q = 2; q <= N / 3; q++) {
+    let i = N - 1;
+    while (i >= q && H[i] === H[i - q]) i--;
+    const run = N - 1 - i;
+    if (run < 2 * q) continue;
+    const first = i + 1; // first event whose counterpart one period back matches
+    if (T[N - 1] - T[first - q] < total * 0.45) continue;
+    const gaps = [];
+    for (let k = first; k < N; k++) gaps.push(T[k] - T[k - q]);
+    gaps.sort((x, y) => x - y);
+    const len = gaps[gaps.length >> 1];
+    if (len < 30 || gaps[gaps.length - 1] - gaps[0] > 6) continue;
+    return { len, start: T[first - q] };
+  }
+  return null;
+}
+
+// Each sound channel is checked on its own (channels with independent tempo
+// accumulators drift against each other by a tick), then the song loop is the
+// longest channel loop, provided the others fit into it a whole number of times.
+function eventLoop(streams, total, res) {
+  const loops = [];
+  for (const st of streams) {
+    if (st.t.length < 8 || st.t[st.t.length - 1] < total * 0.5) continue; // silent or intro-only channel
+    const l = streamLoop(st.t, st.h, total);
+    if (!l) return false;
+    loops.push(l);
+  }
+  if (!loops.length) return false;
+  const len = Math.max(...loops.map((l) => l.len));
+  for (const l of loops) {
+    const k = Math.round(len / l.len);
+    if (Math.abs(len - k * l.len) > 4 + 2 * k) return false;
+  }
+  res.looping = true; res.loopLen = len; res.loopStart = Math.max(...loops.map((l) => l.start));
+  return true;
+}
+
 // Run song `id` without generating audio and describe it: is it music at all,
 // does it loop (and where), or when does it end.
 //   o.maxSec   - how long to listen at most
@@ -83,14 +128,23 @@ const FREQ_LO = new Set([0xff13, 0xff18, 0xff1d, 0xff22]);
 export function analyze(player, id, o = {}) {
   const gb = player.gb, tps = player.tps;
   const res = { ok: false, id, notes: 0, sustained: false, noteFp: 0, fp: 0, looping: false,
-    loopStart: 0, loopLen: 0, loopSig: '', endTick: 0, firstAudible: -1, dubious: false, reason: '' };
+    loopStart: 0, loopLen: 0, loopSig: '', endTick: 0, unresolved: false, firstAudible: -1, dubious: false, reason: '' };
   if (!player.start(id, o.skip)) { res.reason = 'crash'; return res; }
   const maxTicks = Math.round((o.maxSec || 4) * tps);
   const sec = Math.round(tps);
   const wild0 = gb.wildWrites;
+  const mus = new Int32Array(5);
+  const streams = [0, 1, 2, 3, 4].map(() => ({ t: [], h: [] }));
   let tickHash = 0, fp = 0x811c9dc5, noteFp = 0x811c9dc5, notes = 0, lateNotes = 0, n = 0;
   gb.onApu = (a, v) => {
     tickHash = (Math.imul(tickHash ^ ((a << 8) | v), 0x01000193) + 0x9e3779b9) | 0;
+    // Writes that actually change something (many drivers rewrite the same
+    // values every tick): these form the musical event stream.
+    const r = a - 0xff10;
+    if (r === 0x16 ? (v >> 7) !== gb.apu.power : (TRIGGERS.has(a) && (v & 0x80)) || gb.apu.regs[r] !== v) {
+      const c = r < 5 ? 0 : r < 10 ? 1 : r < 15 ? 2 : r < 20 ? 3 : 4;
+      mus[c] = (Math.imul(mus[c] ^ ((a << 8) | v), 0x01000193) + 0x9e3779b9) | 0;
+    }
     if (n < sec * 10) fp = Math.imul(fp ^ ((n << 16) | ((a & 0xff) << 8) | v), 0x01000193);
     if ((TRIGGERS.has(a) && (v & 0x80)) || (FREQ_LO.has(a) && gb.apu.regs[a - 0xff10] !== v)) {
       notes++;
@@ -104,6 +158,7 @@ export function analyze(player, id, o = {}) {
   let lastAud = -1, cand = 0, verified = 0;
   const finish = () => {
     gb.onApu = null; gb.mt = null;
+    res.wh = wh.slice(0, sec * 30);
     res.notes = notes; res.fp = fp >>> 0; res.noteFp = notes >= 6 ? noteFp >>> 0 : 0;
     res.sustained = notes >= 6 && lateNotes >= 2;
     if (res.looping) {
@@ -120,12 +175,14 @@ export function analyze(player, id, o = {}) {
     return res;
   };
   for (; n < maxTicks; n++) {
-    tickHash = 0;
+    tickHash = 0; mus.fill(0);
     if (!player.tick()) { res.reason = 'crash'; return finish(); }
     gb.endAudioFrame();
     if (gb.apu.audible()) { lastAud = n; if (res.firstAudible < 0) res.firstAudible = n; }
     if (!o.detect) continue;
     wh.push(tickHash);
+    for (let c = 0; c < 5; c++) if (mus[c]) { streams[c].t.push(n); streams[c].h.push(mus[c]); }
+    if (n >= sec * 40 && n % (sec * 20) === 0 && eventLoop(streams, n + 1, res)) { res.ok = true; return finish(); }
     if (n === sec * 5 && notes < 3) { res.reason = 'silent'; return finish(); }
     if (n > sec && n - lastAud > sec * 2) {
       if (lastAud < 0) { res.reason = 'silent'; return finish(); }
@@ -162,19 +219,7 @@ export function analyze(player, id, o = {}) {
   }
   if (o.detect) {
     res.ok = true;
-    // No state recurrence (e.g. free-running counter in driver RAM): fall back
-    // to periodicity of the register-write stream itself.
-    const N = wh.length;
-    let found = false;
-    for (let p = Math.round(sec / 2); p <= N / 3 && !found; p++) {
-      let i = N - 1;
-      while (i >= p && wh[i] === wh[i - p]) i--;
-      const run = N - 1 - i;
-      if (run >= 2 * p && run >= N * 0.45) {
-        res.looping = true; res.loopLen = p; res.loopStart = Math.max(0, i - p + 1); found = true;
-      }
-    }
-    if (!found) res.endTick = N;
+    if (!eventLoop(streams, wh.length, res)) { res.endTick = wh.length; res.unresolved = true; } // still playing, no loop found
   } else res.ok = true;
   return finish();
 }
@@ -214,6 +259,10 @@ export function planFor(player, info, opts) {
     const fadeSec = opts.fadeSec;
     const ticks = Math.min(info.loopStart + info.loopLen * opts.loops + Math.ceil(fadeSec * tps), Math.round(opts.maxSec * tps));
     return { ticks, fadeSec, skipTicks };
+  }
+  if (info.unresolved) {
+    // Never ended and no loop found: give a reasonable excerpt with a fade.
+    return { ticks: Math.round(Math.min(opts.openSec || 150, opts.maxSec) * tps), fadeSec: opts.fadeSec || 8, skipTicks };
   }
   const natural = info.endTick + Math.ceil(tps);
   const capTicks = Math.round(opts.maxSec * tps);
