@@ -8,7 +8,7 @@ import { Player, analyze, render, planFor, planSeconds } from './player.js';
 const LISTEN_SEC = 300; // how long to follow one song looking for its loop
 
 // Play every id and keep the ones that are distinct pieces of music.
-function enumerate(gb, cfg, ids, progress = () => {}, strict = false) {
+export function enumerate(gb, cfg, ids, progress = () => {}, strict = false) {
   const player = new Player(gb, cfg);
   const driver = cfg.kind === 'call' || cfg.kind === 'poke';
   const tracks = [], seen = new Set();
@@ -17,6 +17,15 @@ function enumerate(gb, cfg, ids, progress = () => {}, strict = false) {
     // What we hear when the id is ignored: the old song carrying on. Not a track.
     skip = analyze(player, 0, { maxSec: LISTEN_SEC, detect: true, skip: true });
   }
+  if (driver && cfg.pre === undefined) {
+    // Look for an id that stops the music. Starting every song from silence
+    // lets jingles and effects be heard alone instead of over the old song.
+    for (const id of ids) {
+      const q = analyze(player, id, { maxSec: 3 });
+      if (q.ok && q.notes === 0 && q.lastAudible < player.tps && q.fp !== skip.fp) { cfg.pre = id; break; }
+    }
+  }
+  if (cfg.pre !== undefined) skip = null;
   // An id that only plays a sound effect leaves the old song running underneath:
   // tick for tick the same register writes as the "ignored" run once the effect
   // is over. A real song change (even to the same song) shifts the timeline.
