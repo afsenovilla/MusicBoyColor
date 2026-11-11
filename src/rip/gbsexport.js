@@ -131,6 +131,9 @@ export function buildGbs(session, rom, tags = {}) {
   let dropped = 0;
   try {
     for (const t of session.tracks) {
+      // Ids that made the driver scribble outside its own memory are not songs,
+      // and running them can crash other players.
+      if (t.dubious) { dropped++; continue; }
       const ticks = Math.min(600, (t.info.looping ? t.info.loopStart + t.info.loopLen : t.info.endTick) + 30);
       const one = { low: new Set(), ram: new Set(), rsts: new Set() };
       lowRead = new Uint8Array(LOAD);

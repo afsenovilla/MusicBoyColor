@@ -81,7 +81,7 @@ function refreshSummary() {
   $('all').checked = sel.length === state.tracks.length;
   $('all').indeterminate = sel.length > 0 && sel.length < state.tracks.length;
   $('export').disabled = state.busy || sel.length === 0;
-  $('gbs').disabled = state.busy || sel.length === 0;
+  $('gbs').disabled = state.busy || state.tracks.length === 0;
   let n = 0;
   state.tracks.forEach((tk, i) => {
     const row = $('rows').children[i];
@@ -228,13 +228,14 @@ function exportTracks(list, single) {
 }
 
 function exportGbs() {
-  const sel = selected();
-  if (state.busy || !sel.length) return;
+  // A GBS is the complete rip: every song the driver has, effects included,
+  // whatever is ticked for the audio export.
+  if (state.busy || !state.tracks.length) return;
   stopAudio();
   setBusy(true);
   show('status', true); show('error', false); state.logs = []; renderLog();
   setProgress(0, 'p.gbs');
-  worker.postMessage({ type: 'gbs', indices: sel.map((tk) => tk.index),
+  worker.postMessage({ type: 'gbs', indices: state.tracks.map((tk) => tk.index),
     album: { album: $('f-album').value.trim() || 'Game Boy', artist: $('f-artist').value.trim(), year: $('f-year').value.trim() } });
 }
 
